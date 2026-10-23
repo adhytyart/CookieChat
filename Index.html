@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-950 text-slate-100">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CookieChat - Serverless P2P Community Chat</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Plus Jakarta Sans', 'sans-serif'],
+                    },
+                    colors: {
+                        cookie: {
+                            50: '#fffbeb',
+                            100: '#fef3c7',
+                            500: '#f59e0b',
+                            600: '#d97706',
+                            700: '#b45309',
+                            800: '#78350f',
+                            900: '#451a03',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.6);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(217, 119, 6, 0.3);
+            border-radius: 9999px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(217, 119, 6, 0.6);
+        }
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .glass-input {
+            background: rgba(30, 41, 59, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .glass-input:focus {
+            border-color: #f59e0b;
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);
+        }
+    </style>
+</head>
+<body class="h-full flex flex-col font-sans antialiased bg-slate-950 text-slate-100 overflow-hidden selection:bg-amber-500 selection:text-slate-950">
+
+    <!-- App Container -->
+    <div id="app" class="h-full flex flex-col relative">
+
+        <!-- Header -->
+        <header class="h-16 glass-panel border-b border-slate-800/80 px-4 md:px-6 flex items-center justify-between z-20 shrink-0">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-600 to-amber-400 flex items-center justify-center shadow-lg shadow-amber-500/20 text-slate-950 font-bold text-xl">
+                    🍪
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold tracking-tight text-slate-100 flex items-center gap-2">
+                        CookieChat
+                        <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">P2P Mesh</span>
+                    </h1>
+                    <p class="text-xs text-slate-400 hidden sm:block">Serverless Distributed Channel Storage</p>
+                </div>
+            </div>
+
+            <!-- Header Action Controls -->
+            <div id="header-actions" class="hidden flex items-center space-x-3">
+                <!-- Peer Stats Badge -->
+                <div class="flex items-center space-x-2 bg-slate-900/80 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-300">
+                    <span class="relative flex h-2 w-2">
+                        <span id="p2p-status-ping" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span id="p2p-status-dot" class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </span>
+                    <span class="font-medium">Active Peers:</span>
+                    <span id="active-peers-count" class="font-bold text-amber-400">1 / 100</span>
+                </div>
+
+                <!-- Channel Info -->
+                <div class="hidden md:flex items-center space-x-2 bg-slate-900/80 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-300">
+                    <i class="fa-solid fa-[#0] fa-hashtag text-amber-500"></i>
+                    <span id="current-channel-tag" class="font-semibold text-slate-200">global</span>
+                </div>
+
+                <!-- Global Wipe Cookies & Chat Data Button -->
+                <button id="erase-all-btn" title="Erase Cookies & Sync Data for ALL Connected Members" class="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-semibold transition-all">
+                    <i class="fa-solid fa-trash-can"></i>
+                    <span class="hidden sm:inline">Erase Channel Cookies</span>
+                </button>
+
+                <!-- Leave Button -->
+                <button id="leave-channel-btn" class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-all text-xs flex items-center gap-1.5">
+                    <i class="fa-solid fa-right-from-bracket"></i>
+                    <span class="hidden sm:inline">Leave</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Workspace View (Switchable) -->
+        <main class="flex-1 relative overflow-hidden flex">
+
+            <!-- VIEW 1: JOIN SCREEN -->
+            <section id="join-screen" class="absolute inset-0 flex items-center justify-center p-4 z-10 bg-slate-950">
+                <div class="max-w-md w-full glass-panel p-6 sm:p-8 rounded-2xl shadow-2xl border border-slate-800 relative overflow-hidden">
+                    <!-- Glow effect -->
+                    <div class="absolute -top-24 -right-24 w-48 h-48 bg-amber-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+                    <div class="text-center mb-6">
+                        <div class="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center text-3xl mx-auto mb-3">
+                            <i class="fa-solid fa-cookie-bite"></i>
+                        </div>
+                        <h2 class="text-2xl font-bold text-slate-100">Join Channel Mesh</h2>
+                        <p class="text-slate-400 text-xs mt-1">Direct P2P connections • Distributed Cookie Storage • Max 100 Active Users</p>
+                    </div>
+
+                    <form id="join-form" class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-300 mb-1.5">Your Username</label>
+                            <div class="relative">
+                                <i class="fa-solid fa-user absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 text-xs"></i>
+                                <input type="text" id="username-input" required maxlength="25" placeholder="e.g. CyberCookie" class="w-full glass-input rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-100 placeholder-slate-500">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-medium text-slate-300 mb-1.5">Channel Name</label>
+                            <div class="relative">
+                                <i class="fa-solid fa-hashtag absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 text-xs"></i>
+                                <input type="text" id="channel-input" required maxlength="30" value="global" placeholder="e.g. global-lounge" class="w-full glass-input rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-100 placeholder-slate-500">
+                            </div>
+                        </div>
+
+                        <div class="p-3 rounded-xl bg-slate-900/60 border border-slate-800 text-xs text-slate-400 space-y-1">
+                            <div class="flex items-center text-amber-400 font-semibold mb-1 gap-1">
+                                <i class="fa-solid fa-circle-info"></i> How CookieChat Sync Works
+                            </div>
+                            <p>• Chat history is auto-saved in encrypted browser cookie storage.</p>
+                            <p>• When you enter, active peer nodes sync all missing messages dynamically.</p>
+                            <p>• Completely serverless P2P mesh network using WebRTC & local state.</p>
+                        </div>
+
+                        <button type="submit" class="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 font-semibold text-slate-950 shadow-lg shadow-amber-500/20 text-sm transition-all transform active:scale-[0.99] flex items-center justify-center gap-2">
+                            <span>Enter Room Mesh</span>
+                            <i class="fa-solid fa-arrow-right text-xs"></i>
+                        </button>
+                    </form>
+                </div>
+            </section>
+
+            <!-- VIEW 2: ACTIVE CHAT SCREEN -->
+            <section id="chat-screen" class="hidden flex-1 flex w-full h-full">
+                <!-- Sidebar: Active Users List -->
+                <aside id="peer-sidebar" class="w-64 bg-slate-900/50 border-r border-slate-800/80 flex flex-col h-full shrink-0 hidden md:flex">
+                    <div class="p-4 border-b border-slate-800/80 flex items-center justify-between">
+                        <span class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                            <i class="fa-solid fa-users text-amber-500"></i>
+                            Channel Members
+                        </span>
+                        <span id="member-badge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-400">
+                            1 / 100
+                        </span>
+                    </div>
+
+                    <div id="peer-list" class="flex-1 overflow-y-auto p-3 space-y-2">
+                        <!-- Dynamic Peer List Item Template inserted via JS -->
+                    </div>
+
+                    <!-- Footer Details -->
+                    <div class="p-3 border-t border-slate-800/80 bg-slate-950/40 text-[11px] text-slate-500 flex flex-col gap-1">
+                        <div class="flex justify-between items-center">
+                            <span>Sync Storage:</span>
+                            <span id="cookie-size-indicator" class="text-amber-400/90 font-mono">0 KB</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span>P2P Protocol:</span>
+                            <span class="text-slate-400">RTC Mesh Sync</span>
+                        </div>
+                    </div>
+                </aside>
+
+                <!-- Chat Workspace -->
+                <div class="flex-1 flex flex-col h-full bg-slate-950 relative overflow-hidden">
+                    
+                    <!-- Channel Banner Bar for Mobile -->
+                    <div class="md:hidden glass-panel px-4 py-2 border-b border-slate-800 flex items-center justify-between text-xs">
+                        <div class="flex items-center space-x-2">
+                            <i class="fa-solid fa-hashtag text-amber-500"></i>
+                            <span id="mobile-channel-name" class="font-bold text-slate-200">global</span>
+                        </div>
+                        <div class="text-slate-400 text-[11px]">
+                            <i class="fa-solid fa-user-group text-amber-400"></i>
+                            <span id="mobile-peer-count">1</span> Active
+                        </div>
+                    </div>
+
+                    <!-- Sync Alert Notification Banner -->
+                    <div id="sync-banner" class="hidden bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 text-xs text-amber-300 flex items-center justify-between animate-pulse">
+                        <div class="flex items-center space-x-2">
+                            <i class="fa-solid fa-rotate animate-spin text-amber-400"></i>
+                            <span>Reconciling & Syncing Cookie Store with Peer Nodes...</span>
+                        </div>
+                        <span class="text-[10px] bg-amber-500/20 px-2 py-0.5 rounded text-amber-300">P2P Mesh</span>
+                    </div>
+
+                    <!-- Messages Scrollable Container -->
+                    <div id="chat-messages" class="flex-1 overflow-y-auto p-4 space-y-4">
+                        <!-- Message Items populate dynamically -->
+                    </div>
+
+                    <!-- Chat Typing Input Area -->
+                    <div class="p-3 sm:p-4 border-t border-slate-800/80 glass-panel shrink-0">
+                        <form id="message-form" class="flex items-center space-x-2">
+                            <div class="relative flex-1">
+                                <input type="text" id="message-input" placeholder="Type a message... (Syncs instantly across cookie mesh)" class="w-full glass-input rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 pr-10">
+                                <button type="button" id="emoji-quick-btn" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-amber-400 transition-colors text-base">
+                                    🍪
+                                </button>
+                            </div>
+                            <button type="submit" class="p-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold shadow-lg shadow-amber-500/20 transition-all flex items-center justify-center shrink-0">
+                                <i class="fa-solid fa-paper-plane text-base px-1"></i>
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Custom Confirmation Modal for Global Wipe -->
+        <div id="wipe-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+            <div class="glass-panel max-w-sm w-full p-6 rounded-2xl border border-red-500/30 text-center space-y-4 shadow-2xl">
+                <div class="w-12 h-12 rounded-full bg-red-500/20 text-red-400 flex items-center justify-center mx-auto text-2xl">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                </div>
+                <h3 class="text-lg font-bold text-slate-100">Erase Channel Cookies?</h3>
+                <p class="text-xs text-slate-300 leading-relaxed">
+                    This will send a command to <b>ERASE all saved cookie chat histories</b> across all currently connected peer members in channel <span id="wipe-channel-name" class="font-bold text-amber-400">#global</span>.
+                </p>
+                <div class="flex items-center space-x-3 pt-2">
+                    <button id="cancel-wipe-btn" class="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold">
+                        Cancel
+                    </button>
+                    <button id="confirm-wipe-btn" class="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold shadow-lg shadow-red-600/30">
+                        Erase For All
+                    </button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Application Script Engine -->
+    <script>
+        /**
+         * CookieChat P2P Distributed Engine
+         * Serverless peer discovery & distributed state sync over WebRTC + Cookies
+         */
+        
+        const MAX_CHANNEL_MEMBERS = 100;
+        const COOKIE_KEY_PREFIX = "cookiechat_msg_store_";
+
+        // State Store
+        const state = {
+            currentUser: null,
+            channel: 'global',
+            peerId: 'peer_' + Math.random().toString(36).substring(2, 9),
+            messages: [], // Message format: { id, sender, text, timestamp, channel }
+            peers: new Map(), // peerId -> { username, connection, dataChannel, lastSeen }
+            signalingChannel: null,
+            rtcConfig: {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' }
+                ]
+            }
+        };
+
+        // DOM Element Selectors
+        const elements = {
+            joinScreen: document.getElementById('join-screen'),
+            chatScreen: document.getElementById('chat-screen'),
+            joinForm: document.getElementById('join-form'),
+            usernameInput: document.getElementById('username-input'),
+            channelInput: document.getElementById('channel-input'),
+            messageForm: document.getElementById('message-form'),
+            messageInput: document.getElementById('message-input'),
+            chatMessages: document.getElementById('chat-messages'),
+            peerList: document.getElementById('peer-list'),
+            activePeersCount: document.getElementById('active-peers-count'),
+            memberBadge: document.getElementById('member-badge'),
+            currentChannelTag: document.getElementById('current-channel-tag'),
+            mobileChannelName: document.getElementById('mobile-channel-name'),
+            mobilePeerCount: document.getElementById('mobile-peer-count'),
+            headerActions: document.getElementById('header-actions'),
+            leaveChannelBtn: document.getElementById('leave-channel-btn'),
+            eraseAllBtn: document.getElementById('erase-all-btn'),
+            wipeModal: document.getElementById('wipe-modal'),
+            wipeChannelName: document.getElementById('wipe-channel-name'),
+            cancelWipeBtn: document.getElementById('cancel-wipe-btn'),
+            confirmWipeBtn: document.getElementById('confirm-wipe-btn'),
+            syncBanner: document.getElementById('sync-banner'),
+            cookieSizeIndicator: document.getElementById('cookie-size-indicator'),
+            emojiQuickBtn: document.getElementById('emoji-quick-btn')
+        };
+
+        // --- COOKIE & STORAGE HELPERS ---
+
+        // Set local cookie for current channel data
+        function setCookie(cname, cvalue, exdays = 30) {
+            const d = new Date();
+            d.setTime(d.getTime() + (exdays * 24 * 60 * 60 * 1000));
+            let expires = "expires=" + d.toUTCString();
+            // Encapsulate safely
+            let encodedVal = encodeURIComponent(cvalue);
+            document.cookie = cname + "=" + encodedVal + ";" + expires + ";path=/;SameSite=Lax";
+            
+            // Also mirror to localStorage to guarantee size support beyond 4KB limit
+            try {
+                localStorage.setItem(cname, cvalue);
+            } catch(e){}
+            updateCookieStorageIndicator();
+        }
+
+        // Get local cookie
+        function getCookie(cname) {
+            let name = cname + "=";
+            let decodedCookie = document.cookie;
+            let ca = decodedCookie.split(';');
+            for(let i = 0; i < ca.length; i++) {
+                let c = ca[i];
+                while (c.charAt(0) == ' ') {
+                    c = c.substring(1);
+                }
+                if (c.indexOf(name) == 0) {
+                    return decodeURIComponent(c.substring(name.length, c.length));
+                }
+            }
+            // Fallback check in local storage mirror
+            try {
+                const lsVal = localStorage.getItem(cname);
+                if (lsVal) return lsVal;
+            } catch(e){}
+            return "";
+        }
+
+        // Erase channel cookies local & storage
+        function eraseCookie(cname) {
+            document.cookie = cname + "=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+            try {
+                localStorage.removeItem(cname);
+            } catch(e){}
+            updateCookieStorageIndicator();
+        }
+
+        // Calculate and display storage usage
+        function updateCookieStorageIndicator() {
+            const key = COOKIE_KEY_PREFIX + state.channel;
+            const data = getCookie(key);
+            const bytes = new Blob([data]).size;
+            const kb = (bytes / 1024).toFixed(2);
+            elements.cookieSizeIndicator.textContent = `${kb} KB`;
+        }
+
+        // Save Current State Messages to Cookie Store
+        function persistMessagesToCookie() {
+            if (!state.channel) return;
+            const storageKey = COOKIE_KEY_PREFIX + state.channel;
+            // Clean older messages if needed to keep payload manageable
+            const sorted = [...state.messages].sort((a,b) => a.timestamp - b.timestamp);
+            const jsonStr = JSON.stringify(sorted);
+            setCookie(storageKey, jsonStr);
+        }
+
+        // Load Messages from Local Cookie
+        function loadMessagesFromCookie() {
+            if (!state.channel) return [];
+            const storageKey = COOKIE_KEY_PREFIX + state.channel;
+            const cookieData = getCookie(storageKey);
+            if (cookieData) {
+                try {
+                    return JSON.parse(cookieData);
+                } catch(e) {
+                    console.error("Failed parsing cookie storage messages", e);
+                }
+            }
+            return [];
+        }
+
+
+        // --- P2P SIGNALING & WEBRTC MESH LOGIC ---
+
+        function initSignaling() {
+            // Using BroadcastChannel API for serverless local/peer discovery
+            const channelName = `cookiechat_signal_${state.channel}`;
+            state.signalingChannel = new BroadcastChannel(channelName);
+
+            state.signalingChannel.onmessage = async (event) => {
+                const data = event.data;
+                if (!data || data.senderId === state.peerId) return; // Ignore own messages
+
+                switch (data.type) {
+                    case 'JOIN_ANNOUNCE':
+                        // Check channel limit
+                        if (state.peers.size + 1 >= MAX_CHANNEL_MEMBERS) {
+                            console.warn("Channel has reached 100 active members limit.");
+                            return;
+                        }
+                        // Connect to newly joined peer
+                        initiatePeerConnection(data.senderId, data.username, true);
+                        break;
+
+                    case 'RTC_OFFER':
+                        if (data.targetId === state.peerId) {
+                            handleRtcOffer(data.senderId, data.username, data.offer);
+                        }
+                        break;
+
+                    case 'RTC_ANSWER':
+                        if (data.targetId === state.peerId) {
+                            handleRtcAnswer(data.senderId, data.answer);
+                        }
+                        break;
+
+                    case 'ICE_CANDIDATE':
+                        if (data.targetId === state.peerId) {
+                            handleIceCandidate(data.senderId, data.candidate);
+                        }
+                        break;
+
+                    case 'LEAVE_ANNOUNCE':
+                        removePeer(data.senderId);
+                        break;
+                }
+            };
+
+            // Broadcast join announcement
+            state.signalingChannel.postMessage({
+                type: 'JOIN_ANNOUNCE',
+                senderId: state.peerId,
+                username: state.currentUser
+            });
+        }
+
+        function createPeerObject(peerId, username) {
+            const pc = new RTCPeerConnection(state.rtcConfig);
+            const peerObj = {
+                id: peerId,
+                username: username,
+                connection: pc,
+                dataChannel: null,
+                lastSeen: Date.now()
+            };
+
+            pc.onicecandidate = (event) => {
+                if (event.candidate && state.signalingChannel) {
+                    state.signalingChannel.postMessage({
+                        type: 'ICE_CANDIDATE',
+                        senderId: state.peerId,
+                        targetId: peerId,
+                        candidate: event.candidate
+                    });
+                }
+            };
+
+            pc.onconnectionstatechange = () => {
+                if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+                    removePeer(peerId);
+                }
+            };
+
+            return peerObj;
+        }
+
+        async function initiatePeerConnection(peerId, username, isInitiator) {
+            if (state.peers.has(peerId)) return;
+
+            const peerObj = createPeerObject(peerId, username);
+            state.peers.set(peerId, peerObj);
+
+            if (isInitiator) {
+                // Create DataChannel
+                const dc = peerObj.connection.createDataChannel("chat-data-channel");
+                setupDataChannel(peerObj, dc);
+
+                const offer = await peerObj.connection.createOffer();
+                await peerObj.connection.setLocalDescription(offer);
+
+                state.signalingChannel.postMessage({
+                    type: 'RTC_OFFER',
+                    senderId: state.peerId,
+                    targetId: peerId,
+                    username: state.currentUser,
+                    offer: offer
+                });
+            } else {
+                peerObj.connection.ondatachannel = (event) => {
+                    setupDataChannel(peerObj, event.channel);
+                };
+            }
+
+            renderPeerList();
+        }
+
+        async function handleRtcOffer(senderId, username, offer) {
+            let peerObj = state.peers.get(senderId);
+            if (!peerObj) {
+                peerObj = createPeerObject(senderId, username);
+                peerObj.connection.ondatachannel = (event) => {
+                    setupDataChannel(peerObj, event.channel);
+                };
+                state.peers.set(senderId, peerObj);
+            }
+
+            await peerObj.connection.setRemoteDescription(new RTCSessionDescription(offer));
+            const answer = await peerObj.connection.createAnswer();
+            await peerObj.connection.setLocalDescription(answer);
+
+            state.signalingChannel.postMessage({
+                type: 'RTC_ANSWER',
+                senderId: state.peerId,
+                targetId: senderId,
+                answer: answer
+            });
+
+            renderPeerList();
+        }
+
+        async function handleRtcAnswer(senderId, answer) {
+            const peerObj = state.peers.get(senderId);
+            if (peerObj && peerObj.connection) {
+                await peerObj.connection.setRemoteDescription(new RTCSessionDescription(answer));
+            }
+        }
+
+        async function handleIceCandidate(senderId, candidate) {
+            const peerObj = state.peers.get(senderId);
+            if (peerObj && peerObj.connection) {
+                try {
+                    await peerObj.connection.addIceCandidate(new RTCIceCandidate(candidate));
+                } catch(e){
+                    console.error("Error adding ice candidate", e);
+                }
+            }
+        }
+
+        function setupDataChannel(peerObj, channel) {
+            peerObj.dataChannel = channel;
+
+            channel.onopen = () => {
+                console.log(`P2P Data Channel Opened with ${peerObj.username}`);
+                renderPeerList();
+                // Send current message storage for initial dynamic sync
+                syncDataWithPeer(peerObj);
+            };
+
+            channel.onmessage = (event) => {
+                handleIncomingPeerMessage(peerObj, event.data);
+            };
+
+            channel.onclose = () => {
+                removePeer(peerObj.id);
+            };
+        }
+
+        function removePeer(peerId) {
+            if (state.peers.has(peerId)) {
+                const peerObj = state.peers.get(peerId);
+                try {
+                    if (peerObj.dataChannel) peerObj.dataChannel.close();
+                    if (peerObj.connection) peerObj.connection.close();
+                } catch(e){}
+                state.peers.delete(peerId);
+                renderPeerList();
+            }
+        }
+
+        // --- REAL-TIME DATA & COOKIE RECONCILIATION SYNC ---
+
+        function broadcastDataChannelMessage(payloadObj) {
+            const jsonStr = JSON.stringify(payloadObj);
+            state.peers.forEach((peer) => {
+                if (peer.dataChannel && peer.dataChannel.readyState === 'open') {
+                    peer.dataChannel.send(jsonStr);
+                }
+            });
+        }
+
+        function syncDataWithPeer(peerObj) {
+            if (peerObj.dataChannel && peerObj.dataChannel.readyState === 'open') {
+                showSyncBanner();
+                // Send stored Cookie Chat messages payload to newly connected peer
+                peerObj.dataChannel.send(JSON.stringify({
+                    type: 'COOKIE_SYNC_PAYLOAD',
+                    messages: state.messages
+                }));
+            }
+        }
+
+        function handleIncomingPeerMessage(peerObj, rawData) {
+            try {
+                const data = JSON.parse(rawData);
+                
+                switch(data.type) {
+                    case 'CHAT_MESSAGE':
+                        // Add message if not exists
+                        if (addMessageToStore(data.message)) {
+                            persistMessagesToCookie();
+                            renderMessages();
+                        }
+                        break;
+
+                    case 'COOKIE_SYNC_PAYLOAD':
+                        // Reconcile peer's cookie messages with local state
+                        if (Array.isArray(data.messages)) {
+                            let updated = false;
+                            data.messages.forEach(msg => {
+                                if (addMessageToStore(msg)) {
+                                    updated = true;
+                                }
+                            });
+                            if (updated) {
+                                persistMessagesToCookie();
+                                renderMessages();
+                            }
+                        }
+                        break;
+
+                    case 'ERASE_ALL_COOKIES_COMMAND':
+                        // Clear local storage and messages for channel
+                        eraseCookie(COOKIE_KEY_PREFIX + state.channel);
+                        state.messages = [];
+                        renderMessages();
+                        addSystemNotification(`⚠️ ${data.byUser} erased channel cookie histories for all members.`);
+                        break;
+                }
+            } catch(e) {
+                console.error("Error processing P2P data message", e);
+            }
+        }
+
+        // Message store logic - deduplicate by id
+        function addMessageToStore(msgObj) {
+            if (!msgObj || !msgObj.id) return false;
+            const exists = state.messages.some(m => m.id === msgObj.id);
+            if (!exists) {
+                state.messages.push(msgObj);
+                // Sort chronologically
+                state.messages.sort((a,b) => a.timestamp - b.timestamp);
+                return true;
+            }
+            return false;
+        }
+
+        function addSystemNotification(text) {
+            const sysMsg = {
+                id: 'sys_' + Date.now() + '_' + Math.random().toString(36).substring(2, 5),
+                sender: 'System',
+                text: text,
+                timestamp: Date.now(),
+                isSystem: true
+            };
+            state.messages.push(sysMsg);
+            renderMessages();
+        }
+
+        function showSyncBanner() {
+            elements.syncBanner.classList.remove('hidden');
+            setTimeout(() => {
+                elements.syncBanner.classList.add('hidden');
+            }, 3000);
+        }
+
+        // --- UI RENDERING & COMPONENT MANAGERS ---
+
+        function renderMessages() {
+            elements.chatMessages.innerHTML = '';
+
+            if (state.messages.length === 0) {
+                elements.chatMessages.innerHTML = `
+                    <div class="h-full flex flex-col items-center justify-center text-center text-slate-500 p-6">
+                        <div class="w-12 h-12 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center text-amber-500/70 text-xl mb-3">
+                            <i class="fa-solid fa-[#0] fa-comments"></i>
+                        </div>
+                        <p class="text-sm font-semibold text-slate-300">No messages in channel yet</p>
+                        <p class="text-xs text-slate-500 max-w-xs mt-1">Send a message to start the P2P cookie synced channel thread!</p>
+                    </div>
+                `;
+                return;
+            }
+
+            let lastSender = null;
+
+            state.messages.forEach((msg) => {
+                if (msg.isSystem) {
+                    const sysDiv = document.createElement('div');
+                    sysDiv.className = 'flex justify-center my-2';
+                    sysDiv.innerHTML = `
+                        <span class="px-3 py-1 rounded-full bg-slate-900/90 border border-slate-800 text-[11px] font-medium text-amber-400/90 shadow-sm">
+                            ${escapeHTML(msg.text)}
+                        </span>
+                    `;
+                    elements.chatMessages.appendChild(sysDiv);
+                    return;
+                }
+
+                const isMe = msg.sender === state.currentUser;
+                const msgGroup = document.createElement('div');
+                msgGroup.className = `flex flex-col ${isMe ? 'items-end' : 'items-start'}`;
+
+                const timeStr = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+                msgGroup.innerHTML = `
+                    ${!isMe && lastSender !== msg.sender ? `
+                        <span class="text-[11px] font-semibold text-amber-400/90 mb-1 pl-1">
+                            ${escapeHTML(msg.sender)}
+                        </span>
+                    ` : ''}
+                    <div class="max-w-[85%] sm:max-w-[70%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed shadow-md ${
+                        isMe 
+                        ? 'bg-amber-500 text-slate-950 font-medium rounded-tr-none' 
+                        : 'bg-slate-900 text-slate-100 border border-slate-800 rounded-tl-none'
+                    }">
+                        <div class="break-words">${escapeHTML(msg.text)}</div>
+                        <div class="text-[10px] ${isMe ? 'text-slate-900/70' : 'text-slate-500'} text-right mt-1 font-mono">
+                            ${timeStr}
+                        </div>
+                    </div>
+                `;
+
+                elements.chatMessages.appendChild(msgGroup);
+                lastSender = msg.sender;
+            });
+
+            // Scroll to bottom
+            elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+        }
+
+        function renderPeerList() {
+            const count = state.peers.size + 1; // Peers + Self
+            elements.activePeersCount.textContent = `${count} / ${MAX_CHANNEL_MEMBERS}`;
+            elements.memberBadge.textContent = `${count} / ${MAX_CHANNEL_MEMBERS}`;
+            elements.mobilePeerCount.textContent = count;
+
+            elements.peerList.innerHTML = '';
+
+            // Render Current Self User
+            const selfCard = document.createElement('div');
+            selfCard.className = 'p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center space-x-3';
+            selfCard.innerHTML = `
+                <div class="relative">
+                    <div class="w-8 h-8 rounded-lg bg-amber-500 text-slate-950 font-bold flex items-center justify-center text-xs">
+                        ${state.currentUser.substring(0, 2).toUpperCase()}
+                    </div>
+                    <span class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 border-2 border-slate-950 rounded-full"></span>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="text-xs font-bold text-slate-100 truncate">${escapeHTML(state.currentUser)} <span class="text-[10px] text-amber-400 font-normal">(You)</span></div>
+                    <div class="text-[10px] text-slate-400">Node Leader • Connected</div>
+                </div>
+            `;
+            elements.peerList.appendChild(selfCard);
+
+            // Render Connected Peers
+            state.peers.forEach((peer) => {
+                const peerCard = document.createElement('div');
+                peerCard.className = 'p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center space-x-3 hover:border-slate-700 transition-colors';
+                peerCard.innerHTML = `
+                    <div class="relative">
+                        <div class="w-8 h-8 rounded-lg bg-slate-800 text-slate-300 font-bold flex items-center justify-center text-xs border border-slate-700">
+                            ${peer.username.substring(0, 2).toUpperCase()}
+                        </div>
+                        <span class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 border-2 border-slate-950 rounded-full"></span>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="text-xs font-semibold text-slate-200 truncate">${escapeHTML(peer.username)}</div>
+                        <div class="text-[10px] text-slate-400 flex items-center gap-1">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"></span>
+                            WebRTC Active
+                        </div>
+                    </div>
+                `;
+                elements.peerList.appendChild(peerCard);
+            });
+        }
+
+        function escapeHTML(str) {
+            return str.replace(/[&<>'"]/g, 
+                tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
+            );
+        }
+
+        // --- EVENT HANDLERS & APP LIFECYCLE ---
+
+        // Join Channel Form Handler
+        elements.joinForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const username = elements.usernameInput.value.trim();
+            const channel = elements.channelInput.value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+
+            if (!username || !channel) return;
+
+            state.currentUser = username;
+            state.channel = channel;
+
+            // UI updates
+            elements.currentChannelTag.textContent = channel;
+            elements.mobileChannelName.textContent = channel;
+            elements.wipeChannelName.textContent = '#' + channel;
+
+            // Switch Screen
+            elements.joinScreen.classList.add('hidden');
+            elements.chatScreen.classList.remove('hidden');
+            elements.headerActions.classList.remove('hidden');
+
+            // Load Existing Cookie Data
+            state.messages = loadMessagesFromCookie();
+            renderMessages();
+
+            // Init Signaling & Peer Connections
+            initSignaling();
+            renderPeerList();
+        });
+
+        // Send Message Handler
+        elements.messageForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const text = elements.messageInput.value.trim();
+            if (!text) return;
+
+            const msgObj = {
+                id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+                sender: state.currentUser,
+                text: text,
+                timestamp: Date.now(),
+                channel: state.channel
+            };
+
+            // Store locally & persisted to cookies
+            addMessageToStore(msgObj);
+            persistMessagesToCookie();
+            renderMessages();
+
+            // Broadcast to connected P2P Mesh
+            broadcastDataChannelMessage({
+                type: 'CHAT_MESSAGE',
+                message: msgObj
+            });
+
+            elements.messageInput.value = '';
+        });
+
+        // Quick Emoji Click Button
+        elements.emojiQuickBtn.addEventListener('click', () => {
+            const emojis = ['🍪', '🔥', '⚡', '💻', '🚀', '👍', '❤️'];
+            const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
+            elements.messageInput.value += randomEmoji + ' ';
+            elements.messageInput.focus();
+        });
+
+        // Leave Channel Action
+        elements.leaveChannelBtn.addEventListener('click', () => {
+            if (state.signalingChannel) {
+                state.signalingChannel.postMessage({
+                    type: 'LEAVE_ANNOUNCE',
+                    senderId: state.peerId
+                });
+                state.signalingChannel.close();
+            }
+
+            // Close all RTC connections
+            state.peers.forEach((peer) => {
+                if (peer.connection) peer.connection.close();
+            });
+            state.peers.clear();
+
+            // Switch to join screen
+            elements.chatScreen.classList.add('hidden');
+            elements.headerActions.classList.add('hidden');
+            elements.joinScreen.classList.remove('hidden');
+        });
+
+        // Global Cookie Wipe Modal Controls
+        elements.eraseAllBtn.addEventListener('click', () => {
+            elements.wipeModal.classList.remove('hidden');
+        });
+
+        elements.cancelWipeBtn.addEventListener('click', () => {
+            elements.wipeModal.classList.add('hidden');
+        });
+
+        // Confirm Global Cookie Erase Command
+        elements.confirmWipeBtn.addEventListener('click', () => {
+            elements.wipeModal.classList.add('hidden');
+
+            // 1. Wipe local cookie
+            eraseCookie(COOKIE_KEY_PREFIX + state.channel);
+            state.messages = [];
+            renderMessages();
+
+            // 2. Broadcast Erase Command to all active connected peers
+            broadcastDataChannelMessage({
+                type: 'ERASE_ALL_COOKIES_COMMAND',
+                byUser: state.currentUser
+            });
+
+            addSystemNotification(`⚠️ You cleared channel cookie histories for all connected members.`);
+        });
+
+        // Clean disconnect on page unload
+        window.addEventListener('beforeunload', () => {
+            if (state.signalingChannel) {
+                state.signalingChannel.postMessage({
+                    type: 'LEAVE_ANNOUNCE',
+                    senderId: state.peerId
+                });
+            }
+        });
+    </script>
+</body>
+</html>
