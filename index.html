@@ -317,11 +317,12 @@
     <!-- Application Script Engine -->
     <script>
         /**
-         * CookieChat Serverless P2P Realtime Engine
+         * CookieChat Serverless Realtime P2P Engine
          */
         
         const MAX_CHANNEL_MEMBERS = 100;
         const COOKIE_KEY_PREFIX = "cookiechat_msg_store_";
+        const MAX_P2P_WELLKNOWN_SLOTS = 10;
 
         // Global Application State
         const state = {
@@ -330,10 +331,11 @@
             peer: null, // PeerJS Instance
             peerId: null,
             messages: [], // Array of message objects
-            activeConnections: new Map(), // peerId -> { conn, username }
+            activeConnections: new Map(), // peerId -> { connection, username, lastSeen }
             knownPeers: new Set(),
-            pendingAttachment: null, // Holds selected/dragged file
-            discoveryInterval: null
+            pendingAttachment: null,
+            discoveryInterval: null,
+            heartbeatInterval: null
         };
 
         // DOM Element References
@@ -430,11 +432,9 @@
                                    .sort((a,b) => a.timestamp - b.timestamp);
             state.messages = cleanMsgs;
             
-            // Filter large media files from cookie string if total size exceeds limit (~4000KB)
             try {
                 let jsonStr = JSON.stringify(cleanMsgs);
                 if (jsonStr.length > 3500000) {
-                    // Truncate older attachment data to preserve room text history
                     const prunedMsgs = cleanMsgs.map(m => {
                         if (m.attachment && m.attachment.data && m.attachment.data.length > 50000) {
                             return { ...m, attachment: { ...m.attachment, data: null, truncated: true } };
@@ -471,9 +471,18 @@
 
         function initializePeerMesh() {
             const sanitizedChannel = cleanChannelId(state.channel);
-            const randSuffix = Math.random().toString(36).substring(2, 7);
-            const rawPeerId = `cookiechat-${sanitizedChannel}-${randSuffix}`;
-            state.peerId = rawPeerId;
+            const randSuffix = Math.random().toString(36).substring(2, 8);
+            
+            // Generate standard P2P mesh slot address
+            const targetSlot = Math.floor(Math.random() * MAX_P2P_WELLKNOWN_SLOTS);
+            const primarySlotId = `cookiechat-v2-${sanitizedChannel}-slot-${targetSlot}`;
+            const uniquePeerId = `cookiechat-v2-${sanitizedChannel}-${randSuffix}`;
+
+            createPeerNode(primarySlotId, uniquePeerId, sanitizedChannel);
+        }
+
+        function createPeerNode(preferredId, fallbackId, sanitizedChannel) {
+            state.peerId = preferredId;
 
             state.peer = new Peer(state.peerId, {
                 debug: 1,
@@ -481,53 +490,82 @@
                     iceServers: [
                         { urls: 'stun:stun.l.google.com:19302' },
                         { urls: 'stun:stun1.l.google.com:19302' },
-                        { urls: 'stun:stun2.l.google.com:19302' }
+                        { urls: 'stun:stun2.l.google.com:19302' },
+                        { urls: 'stun:stun3.l.google.com:19302' },
+                        { urls: 'stun:stun4.l.google.com:19302' }
                     ]
                 }
             });
 
             state.peer.on('open', (id) => {
-                console.log('PeerJS Node Online. P2P ID:', id);
+                console.log('Registered P2P Node ID:', id);
                 state.knownPeers.add(id);
-                discoverAndConnectPeers();
-                state.discoveryInterval = setInterval(discoverAndConnectPeers, 8000);
+                
+                startDiscoveryAndHeartbeats(sanitizedChannel);
             });
 
             state.peer.on('connection', (conn) => {
-                if (state.activeConnections.size >= MAX_CHANNEL_MEMBERS) {
-                    conn.close();
-                    return;
-                }
                 setupDataConnection(conn);
             });
 
             state.peer.on('error', (err) => {
-                console.warn("Peer status:", err.type);
+                console.warn("PeerJS connection event:", err.type);
+                if (err.type === 'unavailable-id') {
+                    // Preferred slot occupied, fall back to unique peer ID and connect to standard slot
+                    createPeerNode(fallbackId, `cookiechat-v2-${sanitizedChannel}-${Math.random().toString(36).substring(2, 8)}`, sanitizedChannel);
+                }
             });
+        }
+
+        function startDiscoveryAndHeartbeats(sanitizedChannel) {
+            // Probe known slot IDs to find existing room members
+            probeChannelSlotNodes(sanitizedChannel);
+
+            // Periodically discover new peers
+            if (state.discoveryInterval) clearInterval(state.discoveryInterval);
+            state.discoveryInterval = setInterval(() => {
+                probeChannelSlotNodes(sanitizedChannel);
+                exchangePeerMeshNodes();
+            }, 5000);
+
+            // Heartbeat to keep data channels active
+            if (state.heartbeatInterval) clearInterval(state.heartbeatInterval);
+            state.heartbeatInterval = setInterval(() => {
+                sendHeartbeatToPeers();
+            }, 3000);
+        }
+
+        function probeChannelSlotNodes(sanitizedChannel) {
+            for (let i = 0; i < MAX_P2P_WELLKNOWN_SLOTS; i++) {
+                const slotId = `cookiechat-v2-${sanitizedChannel}-slot-${i}`;
+                if (slotId !== state.peerId && !state.activeConnections.has(slotId)) {
+                    connectToPeer(slotId);
+                }
+            }
         }
 
         function setupDataConnection(conn) {
             conn.on('open', () => {
-                console.log(`Connected P2P WebRTC DataChannel to ${conn.peer}`);
+                console.log(`P2P DataChannel established with ${conn.peer}`);
                 
                 state.activeConnections.set(conn.peer, {
                     connection: conn,
-                    username: conn.metadata?.username || 'Peer Node'
+                    username: conn.metadata?.username || 'Peer User',
+                    lastSeen: Date.now()
                 });
                 state.knownPeers.add(conn.peer);
 
-                // Send Handshake
+                // Initial handshake with details & cookies
                 conn.send({
                     type: 'HANDSHAKE',
                     username: state.currentUser,
                     peerId: state.peerId,
-                    knownPeers: Array.from(state.knownPeers)
+                    knownPeers: Array.from(state.knownPeers),
+                    messages: state.messages
                 });
 
-                // Immediate Cookie Sync Swap
-                syncCookiesWithPeer(conn);
                 renderPeerList();
-                showToast(`Peer Connected: ${conn.metadata?.username || 'Peer'}`);
+                showToast(`Connected with active member: ${conn.metadata?.username || 'Peer'}`);
             });
 
             conn.on('data', (data) => {
@@ -535,30 +573,13 @@
             });
 
             conn.on('close', () => {
-                console.log(`Connection closed with ${conn.peer}`);
                 state.activeConnections.delete(conn.peer);
                 renderPeerList();
             });
 
             conn.on('error', (err) => {
-                console.error("Peer connection error:", err);
                 state.activeConnections.delete(conn.peer);
                 renderPeerList();
-            });
-        }
-
-        function discoverAndConnectPeers() {
-            broadcastLocalDiscoverySignal();
-
-            state.activeConnections.forEach(({ connection }) => {
-                if (connection && connection.open) {
-                    connection.send({
-                        type: 'PEER_EXCHANGE_REQ',
-                        peerId: state.peerId,
-                        username: state.currentUser,
-                        knownPeers: Array.from(state.knownPeers)
-                    });
-                }
             });
         }
 
@@ -567,19 +588,43 @@
                 return;
             }
 
-            if (state.activeConnections.size + 1 > MAX_CHANNEL_MEMBERS) {
-                return;
-            }
-
-            const conn = state.peer.connect(targetPeerId, {
-                metadata: { username: state.currentUser, channel: state.channel },
-                reliable: true
-            });
-
-            setupDataConnection(conn);
+            try {
+                const conn = state.peer.connect(targetPeerId, {
+                    metadata: { username: state.currentUser, channel: state.channel },
+                    reliable: true
+                });
+                setupDataConnection(conn);
+            } catch(e) {}
         }
 
-        // Cross-Tab Signal Support
+        function exchangePeerMeshNodes() {
+            broadcastToMesh({
+                type: 'PEER_EXCHANGE',
+                peerId: state.peerId,
+                username: state.currentUser,
+                knownPeers: Array.from(state.knownPeers)
+            });
+        }
+
+        function sendHeartbeatToPeers() {
+            const now = Date.now();
+            state.activeConnections.forEach((peerObj, pid) => {
+                if (now - peerObj.lastSeen > 12000) {
+                    // Stale connection timeout
+                    peerObj.connection.close();
+                    state.activeConnections.delete(pid);
+                    renderPeerList();
+                } else if (peerObj.connection && peerObj.connection.open) {
+                    peerObj.connection.send({
+                        type: 'PING',
+                        username: state.currentUser,
+                        peerId: state.peerId
+                    });
+                }
+            });
+        }
+
+        // Cross-Tab Broadcast Channel Sync
         let broadcastChan = null;
         function initLocalBroadcastChannel() {
             const chanName = `cookiechat_channel_${cleanChannelId(state.channel)}`;
@@ -621,25 +666,36 @@
             });
         }
 
-        function syncCookiesWithPeer(conn) {
-            if (conn && conn.open) {
-                showSyncBanner("Syncing channel cookies with peer...");
-                conn.send({
-                    type: 'COOKIE_SYNC_PAYLOAD',
-                    messages: state.messages
-                });
-            }
-        }
-
         function handleIncomingPeerData(conn, data) {
             if (!data || !data.type) return;
 
+            // Touch last active timestamp for peer
+            const peerObj = state.activeConnections.get(conn.peer);
+            if (peerObj) {
+                peerObj.lastSeen = Date.now();
+                if (data.username) peerObj.username = data.username;
+            }
+
             switch(data.type) {
                 case 'HANDSHAKE':
-                    const peerMeta = state.activeConnections.get(conn.peer);
-                    if (peerMeta) {
-                        peerMeta.username = data.username || peerMeta.username;
+                    if (peerObj) {
+                        peerObj.username = data.username || peerObj.username;
                     }
+                    if (Array.isArray(data.knownPeers)) {
+                        data.knownPeers.forEach(pid => {
+                            if (pid !== state.peerId && !state.activeConnections.has(pid)) {
+                                state.knownPeers.add(pid);
+                                connectToPeer(pid);
+                            }
+                        });
+                    }
+                    if (Array.isArray(data.messages)) {
+                        mergeIncomingMessages(data.messages);
+                    }
+                    renderPeerList();
+                    break;
+
+                case 'PEER_EXCHANGE':
                     if (Array.isArray(data.knownPeers)) {
                         data.knownPeers.forEach(pid => {
                             if (pid !== state.peerId && !state.activeConnections.has(pid)) {
@@ -651,19 +707,11 @@
                     renderPeerList();
                     break;
 
-                case 'PEER_EXCHANGE_REQ':
-                    if (data.username && state.activeConnections.has(conn.peer)) {
-                        state.activeConnections.get(conn.peer).username = data.username;
+                case 'PING':
+                    if (peerObj && data.username) {
+                        peerObj.username = data.username;
+                        renderPeerList();
                     }
-                    if (Array.isArray(data.knownPeers)) {
-                        data.knownPeers.forEach(pid => {
-                            if (pid !== state.peerId && !state.activeConnections.has(pid)) {
-                                state.knownPeers.add(pid);
-                                connectToPeer(pid);
-                            }
-                        });
-                    }
-                    renderPeerList();
                     break;
 
                 case 'CHAT_MESSAGE':
@@ -675,17 +723,7 @@
 
                 case 'COOKIE_SYNC_PAYLOAD':
                     if (Array.isArray(data.messages)) {
-                        let newCount = 0;
-                        data.messages.forEach(msg => {
-                            if (addMessageToStore(msg)) {
-                                newCount++;
-                            }
-                        });
-                        if (newCount > 0) {
-                            persistMessagesToCookie();
-                            renderMessages();
-                            showToast(`Synced ${newCount} historical messages from peer!`);
-                        }
+                        mergeIncomingMessages(data.messages);
                     }
                     break;
 
@@ -696,6 +734,20 @@
                     addSystemNotification(`⚠️ ${data.byUser || 'A member'} erased channel cookie histories for all members.`);
                     showToast("Channel cookies erased globally", "red");
                     break;
+            }
+        }
+
+        function mergeIncomingMessages(incomingMsgs) {
+            let newCount = 0;
+            incomingMsgs.forEach(msg => {
+                if (addMessageToStore(msg)) {
+                    newCount++;
+                }
+            });
+            if (newCount > 0) {
+                persistMessagesToCookie();
+                renderMessages();
+                showToast(`Synced ${newCount} cookie-stored messages in realtime!`);
             }
         }
 
@@ -753,7 +805,6 @@
         function handleFileSelected(file) {
             if (!file) return;
 
-            // Size limit check (max 5MB for direct P2P mesh memory safety)
             if (file.size > 5 * 1024 * 1024) {
                 showToast("File size too large (Max 5MB for P2P mesh)", "red");
                 return;
@@ -769,7 +820,6 @@
                     isImage: file.type.startsWith('image/')
                 };
 
-                // Show UI Preview
                 elements.fileName.textContent = file.name;
                 elements.fileSize.textContent = (file.size / 1024).toFixed(1) + ' KB';
                 
@@ -829,7 +879,6 @@
 
                 const timeStr = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-                // Construct attachment HTML if present
                 let attachmentHTML = '';
                 if (msg.attachment) {
                     if (msg.attachment.isImage && msg.attachment.data) {
@@ -883,14 +932,14 @@
         }
 
         function renderPeerList() {
-            const activeCount = state.activeConnections.size + 1; // Self + Connected Peers
+            const activeCount = state.activeConnections.size + 1; // Self + Active Connected Peers
             elements.activePeersCount.textContent = `${activeCount} / ${MAX_CHANNEL_MEMBERS}`;
             elements.memberBadge.textContent = `${activeCount} / ${MAX_CHANNEL_MEMBERS}`;
             elements.mobilePeerCount.textContent = activeCount;
 
             elements.peerList.innerHTML = '';
 
-            // Self Node Card
+            // Self Card
             const selfCard = document.createElement('div');
             selfCard.className = 'p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center space-x-3';
             selfCard.innerHTML = `
@@ -902,12 +951,12 @@
                 </div>
                 <div class="flex-1 min-w-0">
                     <div class="text-xs font-bold text-slate-100 truncate">${escapeHTML(state.currentUser)} <span class="text-[10px] text-amber-400 font-normal">(You)</span></div>
-                    <div class="text-[10px] text-slate-400 truncate">P2P Node • Active</div>
+                    <div class="text-[10px] text-slate-400 truncate">Active Node</div>
                 </div>
             `;
             elements.peerList.appendChild(selfCard);
 
-            // Connected Active Peers
+            // Active Peers
             state.activeConnections.forEach((peerData, peerId) => {
                 const peerCard = document.createElement('div');
                 peerCard.className = 'p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center space-x-3 hover:border-slate-700 transition-colors';
@@ -921,8 +970,8 @@
                     <div class="flex-1 min-w-0">
                         <div class="text-xs font-semibold text-slate-200 truncate">${escapeHTML(peerData.username)}</div>
                         <div class="text-[10px] text-slate-400 flex items-center gap-1">
-                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"></span>
-                            WebRTC Direct
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block animate-pulse"></span>
+                            Online Active
                         </div>
                     </div>
                 `;
@@ -938,7 +987,6 @@
 
         // --- EVENT LISTENERS & APP CONTROLS ---
 
-        // File Selection Listener
         elements.fileUploadInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (file) handleFileSelected(file);
@@ -946,7 +994,6 @@
 
         elements.removeAttachmentBtn.addEventListener('click', clearPendingAttachment);
 
-        // Drag & Drop Support
         ['dragenter', 'dragover'].forEach(eventName => {
             elements.chatWorkspace.addEventListener(eventName, (e) => {
                 e.preventDefault();
@@ -971,7 +1018,6 @@
             }
         });
 
-        // Paste Image/File Support
         document.addEventListener('paste', (e) => {
             if (!elements.chatScreen.classList.contains('hidden')) {
                 const items = (e.clipboardData || e.originalEvent.clipboardData).items;
@@ -985,7 +1031,6 @@
             }
         });
 
-        // Enter key to send message
         elements.messageInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
@@ -993,7 +1038,6 @@
             }
         });
 
-        // Join Room Form
         elements.joinForm.addEventListener('submit', (e) => {
             e.preventDefault();
             const username = elements.usernameInput.value.trim();
@@ -1004,7 +1048,6 @@
             state.currentUser = username;
             state.channel = channel;
 
-            // UI Adjustments
             elements.currentChannelTag.textContent = channel;
             elements.mobileChannelName.textContent = channel;
             elements.wipeChannelName.textContent = '#' + channel;
@@ -1013,17 +1056,14 @@
             elements.chatScreen.classList.remove('hidden');
             elements.headerActions.classList.remove('hidden');
 
-            // Load saved cookie chat data
             state.messages = loadMessagesFromCookie();
             renderMessages();
 
-            // Initialize Mesh Connection
             initLocalBroadcastChannel();
             initializePeerMesh();
             renderPeerList();
         });
 
-        // Send Message Form
         elements.messageForm.addEventListener('submit', (e) => {
             e.preventDefault();
             const text = elements.messageInput.value.trim();
@@ -1039,23 +1079,19 @@
                 channel: state.channel
             };
 
-            // Save & Render locally
             addMessageToStore(msgObj);
             persistMessagesToCookie();
             renderMessages();
 
-            // Broadcast directly across WebRTC data channels
             broadcastToMesh({
                 type: 'CHAT_MESSAGE',
                 message: msgObj
             });
 
-            // Reset Input UI
             elements.messageInput.value = '';
             clearPendingAttachment();
         });
 
-        // Quick Emoji Selector
         elements.emojiQuickBtn.addEventListener('click', () => {
             const emojis = ['🍪', '🔥', '⚡', '💻', '🚀', '👍', '❤️'];
             const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
@@ -1063,7 +1099,6 @@
             elements.messageInput.focus();
         });
 
-        // Invite / Room Link Copy
         elements.copyRoomBtn.addEventListener('click', () => {
             const url = new URL(window.location.href);
             url.searchParams.set('channel', state.channel);
@@ -1078,9 +1113,9 @@
             showToast("Invite link copied to clipboard!");
         });
 
-        // Leave Channel
         elements.leaveChannelBtn.addEventListener('click', () => {
             if (state.discoveryInterval) clearInterval(state.discoveryInterval);
+            if (state.heartbeatInterval) clearInterval(state.heartbeatInterval);
             
             state.activeConnections.forEach(({ connection }) => {
                 if (connection) connection.close();
@@ -1094,7 +1129,6 @@
             elements.joinScreen.classList.remove('hidden');
         });
 
-        // Global Erase Cookie Controls
         elements.eraseAllBtn.addEventListener('click', () => {
             elements.wipeModal.classList.remove('hidden');
         });
@@ -1106,12 +1140,10 @@
         elements.confirmWipeBtn.addEventListener('click', () => {
             elements.wipeModal.classList.add('hidden');
 
-            // Erase Local Cookies
             eraseCookie(COOKIE_KEY_PREFIX + state.channel);
             state.messages = [];
             renderMessages();
 
-            // Broadcast wipe signal
             broadcastToMesh({
                 type: 'ERASE_ALL_COOKIES_COMMAND',
                 byUser: state.currentUser
@@ -1121,7 +1153,6 @@
             showToast("Channel cookies erased globally", "red");
         });
 
-        // Handle URL room param on load
         window.addEventListener('DOMContentLoaded', () => {
             const params = new URLSearchParams(window.location.search);
             const chanParam = params.get('channel');
