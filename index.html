@@ -97,7 +97,7 @@
                         <span id="p2p-status-ping" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                         <span id="p2p-status-dot" class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                     </span>
-                    <span class="font-medium">Active Peers:</span>
+                    <span class="font-medium">Active Members:</span>
                     <span id="active-peers-count" class="font-bold text-amber-400">1 / 100</span>
                 </div>
 
@@ -141,7 +141,7 @@
                             <i class="fa-solid fa-cookie-bite"></i>
                         </div>
                         <h2 class="text-2xl font-bold text-slate-100">Join Channel Mesh</h2>
-                        <p class="text-slate-400 text-xs mt-1">Direct WebRTC Connections • Distributed Cookie Storage • Max 100 Active Users</p>
+                        <p class="text-slate-400 text-xs mt-1">Direct WebRTC Connections • Realtime Files & Media • Max 100 Members</p>
                     </div>
 
                     <form id="join-form" class="space-y-4">
@@ -157,17 +157,17 @@
                             <label class="block text-xs font-medium text-slate-300 mb-1.5">Channel Name</label>
                             <div class="relative">
                                 <i class="fa-solid fa-hashtag absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 text-xs"></i>
-                                <input type="text" id="channel-input" required maxlength="30" value="global" placeholder="e.g. global-lounge" class="w-full glass-input rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-100 placeholder-slate-500">
+                                <input type="text" id="channel-input" required maxlength="30" value="global" placeholder="e.g. global" class="w-full glass-input rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-100 placeholder-slate-500">
                             </div>
                         </div>
 
                         <div class="p-3 rounded-xl bg-slate-900/60 border border-slate-800 text-xs text-slate-400 space-y-1">
                             <div class="flex items-center text-amber-400 font-semibold mb-1 gap-1">
-                                <i class="fa-solid fa-circle-info"></i> How CookieChat Works
+                                <i class="fa-solid fa-circle-info"></i> Direct Peer Mesh Features
                             </div>
-                            <p>• Chat history is saved in your browser cookie store.</p>
-                            <p>• Entering a channel syncs missing messages with active P2P peers in real-time.</p>
-                            <p>• Direct end-to-end encrypted WebRTC channels with no centralized server storage.</p>
+                            <p>• Drag & drop or paste images and files directly in chat.</p>
+                            <p>• Full instant WebRTC realtime sync between all online channel members.</p>
+                            <p>• Local browser cookie persistence across channel re-entries.</p>
                         </div>
 
                         <button type="submit" id="join-btn" class="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 font-semibold text-slate-950 shadow-lg shadow-amber-500/20 text-sm transition-all transform active:scale-[0.99] flex items-center justify-center gap-2">
@@ -185,7 +185,7 @@
                     <div class="p-4 border-b border-slate-800/80 flex items-center justify-between">
                         <span class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
                             <i class="fa-solid fa-users text-amber-500"></i>
-                            Channel Members
+                            Active Members
                         </span>
                         <span id="member-badge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-400">
                             1 / 100
@@ -204,14 +204,21 @@
                         </div>
                         <div class="flex justify-between items-center">
                             <span>Connection:</span>
-                            <span id="connection-status-text" class="text-emerald-400">P2P WebRTC Direct</span>
+                            <span id="connection-status-text" class="text-emerald-400">P2P Mesh Direct</span>
                         </div>
                     </div>
                 </aside>
 
-                <!-- Chat Workspace -->
-                <div class="flex-1 flex flex-col h-full bg-slate-950 relative overflow-hidden">
+                <!-- Chat Workspace Container with Drag & Drop Overlay -->
+                <div id="chat-workspace" class="flex-1 flex flex-col h-full bg-slate-950 relative overflow-hidden">
                     
+                    <!-- Drag & Drop Dropzone Overlay -->
+                    <div id="drop-overlay" class="hidden absolute inset-0 bg-slate-950/90 border-4 border-dashed border-amber-500/60 z-30 flex flex-col items-center justify-center text-amber-400 p-6 pointer-events-none transition-all">
+                        <i class="fa-solid fa-cloud-arrow-up text-5xl mb-3 animate-bounce"></i>
+                        <p class="text-lg font-bold">Drop Image or File to Attach</p>
+                        <p class="text-xs text-slate-400 mt-1">Files will be instantly shared across the WebRTC P2P mesh</p>
+                    </div>
+
                     <!-- Channel Banner Bar for Mobile -->
                     <div class="md:hidden glass-panel px-4 py-2 border-b border-slate-800 flex items-center justify-between text-xs">
                         <div class="flex items-center space-x-2">
@@ -224,7 +231,7 @@
                         </div>
                     </div>
 
-                    <!-- Notification Toast / Banner -->
+                    <!-- Notification Banner -->
                     <div id="sync-banner" class="hidden bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 text-xs text-amber-300 flex items-center justify-between animate-pulse">
                         <div class="flex items-center space-x-2">
                             <i class="fa-solid fa-rotate animate-spin text-amber-400"></i>
@@ -238,16 +245,41 @@
                         <!-- Message Items populate dynamically -->
                     </div>
 
-                    <!-- Chat Typing Input Area -->
+                    <!-- Attachment Preview Container -->
+                    <div id="attachment-preview" class="hidden px-4 py-2 bg-slate-900 border-t border-slate-800 flex items-center justify-between text-xs">
+                        <div class="flex items-center space-x-3 overflow-hidden">
+                            <div id="file-thumb" class="w-10 h-10 rounded bg-slate-800 flex items-center justify-center overflow-hidden shrink-0 border border-slate-700">
+                                <i class="fa-solid fa-file text-amber-400 text-lg"></i>
+                            </div>
+                            <div class="truncate">
+                                <p id="file-name" class="font-semibold text-slate-200 truncate">file.png</p>
+                                <p id="file-size" class="text-[10px] text-slate-400">120 KB</p>
+                            </div>
+                        </div>
+                        <button id="remove-attachment-btn" type="button" class="p-1.5 text-slate-400 hover:text-red-400 transition-colors">
+                            <i class="fa-solid fa-xmark text-sm"></i>
+                        </button>
+                    </div>
+
+                    <!-- Chat Input Bar -->
                     <div class="p-3 sm:p-4 border-t border-slate-800/80 glass-panel shrink-0">
-                        <form id="message-form" class="flex items-center space-x-2">
+                        <form id="message-form" class="flex items-end space-x-2">
+                            <!-- File Input Trigger -->
+                            <label for="file-upload-input" title="Attach Image or File" class="p-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-amber-400 transition-colors cursor-pointer shrink-0 border border-slate-700 flex items-center justify-center">
+                                <i class="fa-solid fa-paperclip text-base"></i>
+                                <input type="file" id="file-upload-input" class="hidden" accept="image/*,.pdf,.doc,.docx,.zip,.txt,.json">
+                            </label>
+
+                            <!-- Input Box -->
                             <div class="relative flex-1">
-                                <input type="text" id="message-input" placeholder="Type a message... (Syncs instantly across peer cookie mesh)" class="w-full glass-input rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 pr-10">
-                                <button type="button" id="emoji-quick-btn" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-amber-400 transition-colors text-base">
+                                <textarea id="message-input" rows="1" placeholder="Type a message or drag/paste files... (Enter to send)" class="w-full glass-input rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 pr-10 resize-none max-h-32 leading-relaxed"></textarea>
+                                <button type="button" id="emoji-quick-btn" class="absolute right-3 bottom-3 text-slate-400 hover:text-amber-400 transition-colors text-base">
                                     🍪
                                 </button>
                             </div>
-                            <button type="submit" class="p-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold shadow-lg shadow-amber-500/20 transition-all flex items-center justify-center shrink-0">
+
+                            <!-- Send Button -->
+                            <button type="submit" id="send-btn" class="p-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold shadow-lg shadow-amber-500/20 transition-all flex items-center justify-center shrink-0">
                                 <i class="fa-solid fa-paper-plane text-base px-1"></i>
                             </button>
                         </form>
@@ -285,8 +317,7 @@
     <!-- Application Script Engine -->
     <script>
         /**
-         * CookieChat Serverless P2P Engine
-         * Real-time WebRTC DataChannel connections with peer discovery & dynamic cookie sync
+         * CookieChat Serverless P2P Realtime Engine
          */
         
         const MAX_CHANNEL_MEMBERS = 100;
@@ -297,10 +328,11 @@
             currentUser: null,
             channel: 'global',
             peer: null, // PeerJS Instance
-            peerId: null, // Dynamic sanitized peer ID
-            messages: [], // Array of { id, sender, text, timestamp, channel }
+            peerId: null,
+            messages: [], // Array of message objects
             activeConnections: new Map(), // peerId -> { conn, username }
-            knownPeers: new Set(), // Track known active peers in channel
+            knownPeers: new Set(),
+            pendingAttachment: null, // Holds selected/dragged file
             discoveryInterval: null
         };
 
@@ -308,14 +340,20 @@
         const elements = {
             joinScreen: document.getElementById('join-screen'),
             chatScreen: document.getElementById('chat-screen'),
+            chatWorkspace: document.getElementById('chat-workspace'),
+            dropOverlay: document.getElementById('drop-overlay'),
             joinForm: document.getElementById('join-form'),
             joinBtn: document.getElementById('join-btn'),
-            joinBtnText: document.getElementById('join-btn-text'),
-            joinBtnIcon: document.getElementById('join-btn-icon'),
             usernameInput: document.getElementById('username-input'),
             channelInput: document.getElementById('channel-input'),
             messageForm: document.getElementById('message-form'),
             messageInput: document.getElementById('message-input'),
+            fileUploadInput: document.getElementById('file-upload-input'),
+            attachmentPreview: document.getElementById('attachment-preview'),
+            fileName: document.getElementById('file-name'),
+            fileSize: document.getElementById('file-size'),
+            fileThumb: document.getElementById('file-thumb'),
+            removeAttachmentBtn: document.getElementById('remove-attachment-btn'),
             chatMessages: document.getElementById('chat-messages'),
             peerList: document.getElementById('peer-list'),
             activePeersCount: document.getElementById('active-peers-count'),
@@ -388,11 +426,27 @@
         function persistMessagesToCookie() {
             if (!state.channel) return;
             const storageKey = COOKIE_KEY_PREFIX + state.channel;
-            // Clean/deduplicate and keep chronological order
             const cleanMsgs = Array.from(new Map(state.messages.map(m => [m.id, m])).values())
                                    .sort((a,b) => a.timestamp - b.timestamp);
             state.messages = cleanMsgs;
-            setCookie(storageKey, JSON.stringify(cleanMsgs));
+            
+            // Filter large media files from cookie string if total size exceeds limit (~4000KB)
+            try {
+                let jsonStr = JSON.stringify(cleanMsgs);
+                if (jsonStr.length > 3500000) {
+                    // Truncate older attachment data to preserve room text history
+                    const prunedMsgs = cleanMsgs.map(m => {
+                        if (m.attachment && m.attachment.data && m.attachment.data.length > 50000) {
+                            return { ...m, attachment: { ...m.attachment, data: null, truncated: true } };
+                        }
+                        return m;
+                    });
+                    jsonStr = JSON.stringify(prunedMsgs);
+                }
+                setCookie(storageKey, jsonStr);
+            } catch(e) {
+                console.warn("Cookie storage size limit handled", e);
+            }
         }
 
         function loadMessagesFromCookie() {
@@ -409,7 +463,7 @@
             return [];
         }
 
-        // --- WEBRTC P2P CONNECTIONS & PEER DISCOVERY ---
+        // --- WEBRTC P2P CONNECTIONS & REALTIME MESH ---
 
         function cleanChannelId(rawChannel) {
             return rawChannel.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -417,12 +471,10 @@
 
         function initializePeerMesh() {
             const sanitizedChannel = cleanChannelId(state.channel);
-            // Construct a deterministic base prefix for channel peers
             const randSuffix = Math.random().toString(36).substring(2, 7);
             const rawPeerId = `cookiechat-${sanitizedChannel}-${randSuffix}`;
             state.peerId = rawPeerId;
 
-            // Initialize PeerJS with public STUN servers for standard NAT traversal
             state.peer = new Peer(state.peerId, {
                 debug: 1,
                 config: {
@@ -435,17 +487,12 @@
             });
 
             state.peer.on('open', (id) => {
-                console.log('PeerJS Node Online. Local P2P ID:', id);
+                console.log('PeerJS Node Online. P2P ID:', id);
                 state.knownPeers.add(id);
-                
-                // Discover & connect to potential peers in this channel room
                 discoverAndConnectPeers();
-                
-                // Set interval to periodically announce and maintain room peer mesh
-                state.discoveryInterval = setInterval(discoverAndConnectPeers, 10000);
+                state.discoveryInterval = setInterval(discoverAndConnectPeers, 8000);
             });
 
-            // Handle Incoming Connection Request from Remote Peer
             state.peer.on('connection', (conn) => {
                 if (state.activeConnections.size >= MAX_CHANNEL_MEMBERS) {
                     conn.close();
@@ -455,13 +502,7 @@
             });
 
             state.peer.on('error', (err) => {
-                console.warn("P2P Mesh status note:", err.type);
-                if (err.type === 'peer-unavailable') {
-                    // Normal when probing peer slots
-                } else if (err.type === 'unavailable-id') {
-                    // Retry with new ID if collision
-                    setTimeout(initializePeerMesh, 1000);
-                }
+                console.warn("Peer status:", err.type);
             });
         }
 
@@ -469,14 +510,13 @@
             conn.on('open', () => {
                 console.log(`Connected P2P WebRTC DataChannel to ${conn.peer}`);
                 
-                // Register peer
                 state.activeConnections.set(conn.peer, {
                     connection: conn,
                     username: conn.metadata?.username || 'Peer Node'
                 });
                 state.knownPeers.add(conn.peer);
 
-                // Send Handshake with local Username & Sync Request
+                // Send Handshake
                 conn.send({
                     type: 'HANDSHAKE',
                     username: state.currentUser,
@@ -484,10 +524,10 @@
                     knownPeers: Array.from(state.knownPeers)
                 });
 
-                // Trigger automatic Cookie Chat Sync swap
+                // Immediate Cookie Sync Swap
                 syncCookiesWithPeer(conn);
                 renderPeerList();
-                showToast(`New Peer Connected: ${conn.metadata?.username || 'Peer'}`);
+                showToast(`Peer Connected: ${conn.metadata?.username || 'Peer'}`);
             });
 
             conn.on('data', (data) => {
@@ -495,28 +535,27 @@
             });
 
             conn.on('close', () => {
-                console.log(`P2P Connection closed with ${conn.peer}`);
+                console.log(`Connection closed with ${conn.peer}`);
                 state.activeConnections.delete(conn.peer);
                 renderPeerList();
             });
 
             conn.on('error', (err) => {
-                console.error("Connection error with peer:", conn.peer, err);
+                console.error("Peer connection error:", err);
                 state.activeConnections.delete(conn.peer);
                 renderPeerList();
             });
         }
 
         function discoverAndConnectPeers() {
-            // Check cross-tab local discovery signal channel first
             broadcastLocalDiscoverySignal();
 
-            // Broadcast peer exchange to currently connected peers to learn about other peers in room
             state.activeConnections.forEach(({ connection }) => {
-                if (connection.open) {
+                if (connection && connection.open) {
                     connection.send({
                         type: 'PEER_EXCHANGE_REQ',
                         peerId: state.peerId,
+                        username: state.currentUser,
                         knownPeers: Array.from(state.knownPeers)
                     });
                 }
@@ -529,7 +568,6 @@
             }
 
             if (state.activeConnections.size + 1 > MAX_CHANNEL_MEMBERS) {
-                console.warn("Max active channel size (100) reached.");
                 return;
             }
 
@@ -541,7 +579,7 @@
             setupDataConnection(conn);
         }
 
-        // Cross-tab fast local signal fallback
+        // Cross-Tab Signal Support
         let broadcastChan = null;
         function initLocalBroadcastChannel() {
             const chanName = `cookiechat_channel_${cleanChannelId(state.channel)}`;
@@ -569,7 +607,7 @@
             }
         }
 
-        // --- REALTIME DATA MESSAGING & COOKIE RECONCILIATION ---
+        // --- DATA MESSAGING & REALTIME SYNC ---
 
         function broadcastToMesh(dataObj) {
             state.activeConnections.forEach(({ connection }) => {
@@ -585,7 +623,7 @@
 
         function syncCookiesWithPeer(conn) {
             if (conn && conn.open) {
-                showSyncBanner("Syncing local cookies with peer node...");
+                showSyncBanner("Syncing channel cookies with peer...");
                 conn.send({
                     type: 'COOKIE_SYNC_PAYLOAD',
                     messages: state.messages
@@ -598,7 +636,6 @@
 
             switch(data.type) {
                 case 'HANDSHAKE':
-                    // Update username mapping
                     const peerMeta = state.activeConnections.get(conn.peer);
                     if (peerMeta) {
                         peerMeta.username = data.username || peerMeta.username;
@@ -615,6 +652,9 @@
                     break;
 
                 case 'PEER_EXCHANGE_REQ':
+                    if (data.username && state.activeConnections.has(conn.peer)) {
+                        state.activeConnections.get(conn.peer).username = data.username;
+                    }
                     if (Array.isArray(data.knownPeers)) {
                         data.knownPeers.forEach(pid => {
                             if (pid !== state.peerId && !state.activeConnections.has(pid)) {
@@ -623,6 +663,7 @@
                             }
                         });
                     }
+                    renderPeerList();
                     break;
 
                 case 'CHAT_MESSAGE':
@@ -649,12 +690,11 @@
                     break;
 
                 case 'ERASE_ALL_COOKIES_COMMAND':
-                    // Perform forced local cookie erase
                     eraseCookie(COOKIE_KEY_PREFIX + state.channel);
                     state.messages = [];
                     renderMessages();
                     addSystemNotification(`⚠️ ${data.byUser || 'A member'} erased channel cookie histories for all members.`);
-                    showToast("Channel cookies erased by peer command", "red");
+                    showToast("Channel cookies erased globally", "red");
                     break;
             }
         }
@@ -682,12 +722,12 @@
             renderMessages();
         }
 
-        function showSyncBanner(text = "Reconciling & Syncing Cookie Store with Peer Nodes...") {
+        function showSyncBanner(text = "Syncing Cookie Store with Peer Nodes...") {
             elements.syncBannerText.textContent = text;
             elements.syncBanner.classList.remove('hidden');
             setTimeout(() => {
                 elements.syncBanner.classList.add('hidden');
-            }, 3500);
+            }, 3000);
         }
 
         function showToast(message, type = 'amber') {
@@ -695,7 +735,7 @@
             toast.className = `px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-950 shadow-xl flex items-center gap-2 transform transition-all duration-300 translate-y-2 opacity-0 ${
                 type === 'red' ? 'bg-red-400 text-white' : 'bg-amber-400'
             }`;
-            toast.innerHTML = `<i class="fa-solid fa-[#0] ${type === 'red' ? 'fa-triangle-exclamation' : 'fa-circle-check'}"></i> ${escapeHTML(message)}`;
+            toast.innerHTML = `<i class="fa-solid ${type === 'red' ? 'fa-triangle-exclamation' : 'fa-circle-check'}"></i> ${escapeHTML(message)}`;
             
             elements.toastContainer.appendChild(toast);
             requestAnimationFrame(() => {
@@ -708,7 +748,49 @@
             }, 3000);
         }
 
-        // --- UI RENDERING & VIEWS ---
+        // --- FILE & ATTACHMENT HANDLING ---
+
+        function handleFileSelected(file) {
+            if (!file) return;
+
+            // Size limit check (max 5MB for direct P2P mesh memory safety)
+            if (file.size > 5 * 1024 * 1024) {
+                showToast("File size too large (Max 5MB for P2P mesh)", "red");
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                state.pendingAttachment = {
+                    name: file.name,
+                    size: file.size,
+                    type: file.type,
+                    data: e.target.result,
+                    isImage: file.type.startsWith('image/')
+                };
+
+                // Show UI Preview
+                elements.fileName.textContent = file.name;
+                elements.fileSize.textContent = (file.size / 1024).toFixed(1) + ' KB';
+                
+                if (state.pendingAttachment.isImage) {
+                    elements.fileThumb.innerHTML = `<img src="${e.target.result}" class="w-full h-full object-cover">`;
+                } else {
+                    elements.fileThumb.innerHTML = `<i class="fa-solid fa-file-lines text-amber-400 text-lg"></i>`;
+                }
+
+                elements.attachmentPreview.classList.remove('hidden');
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function clearPendingAttachment() {
+            state.pendingAttachment = null;
+            elements.fileUploadInput.value = '';
+            elements.attachmentPreview.classList.add('hidden');
+        }
+
+        // --- UI RENDERING & MESSAGES DISPLAY ---
 
         function renderMessages() {
             elements.chatMessages.innerHTML = '';
@@ -717,10 +799,10 @@
                 elements.chatMessages.innerHTML = `
                     <div class="h-full flex flex-col items-center justify-center text-center text-slate-500 p-6">
                         <div class="w-12 h-12 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center text-amber-500/70 text-xl mb-3">
-                            <i class="fa-solid fa-[#0] fa-comments"></i>
+                            <i class="fa-solid fa-comments"></i>
                         </div>
                         <p class="text-sm font-semibold text-slate-300">No messages in channel yet</p>
-                        <p class="text-xs text-slate-500 max-w-xs mt-1">Send a message to start the P2P cookie synced channel thread!</p>
+                        <p class="text-xs text-slate-500 max-w-xs mt-1">Send a message, image or file to start the P2P channel thread!</p>
                     </div>
                 `;
                 return;
@@ -743,22 +825,50 @@
 
                 const isMe = msg.sender === state.currentUser;
                 const msgGroup = document.createElement('div');
-                msgGroup.className = `flex flex-col ${isMe ? 'items-end' : 'items-start'}`;
+                msgGroup.className = `flex flex-col ${isMe ? 'items-end' : 'items-start'} my-1`;
 
                 const timeStr = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
+                // Construct attachment HTML if present
+                let attachmentHTML = '';
+                if (msg.attachment) {
+                    if (msg.attachment.isImage && msg.attachment.data) {
+                        attachmentHTML = `
+                            <div class="mt-2 rounded-xl overflow-hidden border border-slate-700/50 max-w-xs">
+                                <img src="${msg.attachment.data}" alt="${escapeHTML(msg.attachment.name)}" class="w-full h-auto object-cover max-h-60 rounded-xl">
+                            </div>
+                        `;
+                    } else if (msg.attachment.data) {
+                        attachmentHTML = `
+                            <a href="${msg.attachment.data}" download="${escapeHTML(msg.attachment.name)}" class="mt-2 flex items-center space-x-2.5 p-2.5 rounded-xl ${isMe ? 'bg-amber-600/30 border border-amber-600/40 text-slate-950' : 'bg-slate-800 border border-slate-700 text-amber-400'} hover:opacity-90 transition-opacity">
+                                <i class="fa-solid fa-file-arrow-down text-lg shrink-0"></i>
+                                <div class="min-w-0 flex-1">
+                                    <p class="text-xs font-semibold truncate ${isMe ? 'text-slate-900' : 'text-slate-200'}">${escapeHTML(msg.attachment.name)}</p>
+                                    <p class="text-[10px] ${isMe ? 'text-slate-800' : 'text-slate-400'}">${(msg.attachment.size / 1024).toFixed(1)} KB</p>
+                                </div>
+                            </a>
+                        `;
+                    } else if (msg.attachment.truncated) {
+                        attachmentHTML = `<p class="text-[10px] italic opacity-75 mt-1">[Attachment history pruned]</p>`;
+                    }
+                }
+
                 msgGroup.innerHTML = `
                     ${!isMe && lastSender !== msg.sender ? `
-                        <span class="text-[11px] font-semibold text-amber-400/90 mb-1 pl-1">
-                            ${escapeHTML(msg.sender)}
-                        </span>
+                        <div class="flex items-center gap-1.5 mb-1 pl-1">
+                            <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+                            <span class="text-xs font-bold text-amber-400">
+                                ${escapeHTML(msg.sender)}
+                            </span>
+                        </div>
                     ` : ''}
                     <div class="max-w-[85%] sm:max-w-[70%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed shadow-md ${
                         isMe 
                         ? 'bg-amber-500 text-slate-950 font-medium rounded-tr-none' 
                         : 'bg-slate-900 text-slate-100 border border-slate-800 rounded-tl-none'
                     }">
-                        <div class="break-words">${escapeHTML(msg.text)}</div>
+                        ${msg.text ? `<div class="break-words whitespace-pre-wrap">${escapeHTML(msg.text)}</div>` : ''}
+                        ${attachmentHTML}
                         <div class="text-[10px] ${isMe ? 'text-slate-900/70' : 'text-slate-500'} text-right mt-1 font-mono">
                             ${timeStr}
                         </div>
@@ -773,19 +883,19 @@
         }
 
         function renderPeerList() {
-            const activeCount = state.activeConnections.size + 1; // Peers + Self
+            const activeCount = state.activeConnections.size + 1; // Self + Connected Peers
             elements.activePeersCount.textContent = `${activeCount} / ${MAX_CHANNEL_MEMBERS}`;
             elements.memberBadge.textContent = `${activeCount} / ${MAX_CHANNEL_MEMBERS}`;
             elements.mobilePeerCount.textContent = activeCount;
 
             elements.peerList.innerHTML = '';
 
-            // Current Self Card
+            // Self Node Card
             const selfCard = document.createElement('div');
             selfCard.className = 'p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center space-x-3';
             selfCard.innerHTML = `
                 <div class="relative">
-                    <div class="w-8 h-8 rounded-lg bg-amber-500 text-slate-950 font-bold flex items-center justify-center text-xs">
+                    <div class="w-8 h-8 rounded-lg bg-amber-500 text-slate-950 font-bold flex items-center justify-center text-xs shadow">
                         ${state.currentUser.substring(0, 2).toUpperCase()}
                     </div>
                     <span class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 border-2 border-slate-950 rounded-full"></span>
@@ -797,7 +907,7 @@
             `;
             elements.peerList.appendChild(selfCard);
 
-            // Connected Remote Peers
+            // Connected Active Peers
             state.activeConnections.forEach((peerData, peerId) => {
                 const peerCard = document.createElement('div');
                 peerCard.className = 'p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center space-x-3 hover:border-slate-700 transition-colors';
@@ -826,9 +936,64 @@
             );
         }
 
-        // --- EVENT HANDLERS & APP LIFECYCLE ---
+        // --- EVENT LISTENERS & APP CONTROLS ---
 
-        // Join Channel
+        // File Selection Listener
+        elements.fileUploadInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) handleFileSelected(file);
+        });
+
+        elements.removeAttachmentBtn.addEventListener('click', clearPendingAttachment);
+
+        // Drag & Drop Support
+        ['dragenter', 'dragover'].forEach(eventName => {
+            elements.chatWorkspace.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                elements.dropOverlay.classList.remove('hidden');
+            }, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            elements.chatWorkspace.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                elements.dropOverlay.classList.add('hidden');
+            }, false);
+        });
+
+        elements.chatWorkspace.addEventListener('drop', (e) => {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            if (files && files.length > 0) {
+                handleFileSelected(files[0]);
+            }
+        });
+
+        // Paste Image/File Support
+        document.addEventListener('paste', (e) => {
+            if (!elements.chatScreen.classList.contains('hidden')) {
+                const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+                for (let index in items) {
+                    const item = items[index];
+                    if (item.kind === 'file') {
+                        const blob = item.getAsFile();
+                        handleFileSelected(blob);
+                    }
+                }
+            }
+        });
+
+        // Enter key to send message
+        elements.messageInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                elements.messageForm.dispatchEvent(new Event('submit'));
+            }
+        });
+
+        // Join Room Form
         elements.joinForm.addEventListener('submit', (e) => {
             e.preventDefault();
             const username = elements.usernameInput.value.trim();
@@ -839,52 +1004,55 @@
             state.currentUser = username;
             state.channel = channel;
 
-            // UI Updates
+            // UI Adjustments
             elements.currentChannelTag.textContent = channel;
             elements.mobileChannelName.textContent = channel;
             elements.wipeChannelName.textContent = '#' + channel;
 
-            // Switch Screen
             elements.joinScreen.classList.add('hidden');
             elements.chatScreen.classList.remove('hidden');
             elements.headerActions.classList.remove('hidden');
 
-            // Load Existing Cookie Data
+            // Load saved cookie chat data
             state.messages = loadMessagesFromCookie();
             renderMessages();
 
-            // Initialize Cross-Tab & WebRTC P2P Mesh
+            // Initialize Mesh Connection
             initLocalBroadcastChannel();
             initializePeerMesh();
             renderPeerList();
         });
 
-        // Send Chat Message
+        // Send Message Form
         elements.messageForm.addEventListener('submit', (e) => {
             e.preventDefault();
             const text = elements.messageInput.value.trim();
-            if (!text) return;
+            
+            if (!text && !state.pendingAttachment) return;
 
             const msgObj = {
                 id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
                 sender: state.currentUser,
                 text: text,
+                attachment: state.pendingAttachment ? { ...state.pendingAttachment } : null,
                 timestamp: Date.now(),
                 channel: state.channel
             };
 
-            // Save locally to state and cookies
+            // Save & Render locally
             addMessageToStore(msgObj);
             persistMessagesToCookie();
             renderMessages();
 
-            // Broadcast to connected P2P mesh
+            // Broadcast directly across WebRTC data channels
             broadcastToMesh({
                 type: 'CHAT_MESSAGE',
                 message: msgObj
             });
 
+            // Reset Input UI
             elements.messageInput.value = '';
+            clearPendingAttachment();
         });
 
         // Quick Emoji Selector
@@ -895,12 +1063,11 @@
             elements.messageInput.focus();
         });
 
-        // Copy Room / Invite Link
+        // Invite / Room Link Copy
         elements.copyRoomBtn.addEventListener('click', () => {
             const url = new URL(window.location.href);
             url.searchParams.set('channel', state.channel);
             
-            // Clipboard fallback
             const dummy = document.createElement("input");
             document.body.appendChild(dummy);
             dummy.value = url.href;
@@ -920,16 +1087,14 @@
             });
             state.activeConnections.clear();
 
-            if (state.peer) {
-                state.peer.destroy();
-            }
+            if (state.peer) state.peer.destroy();
 
             elements.chatScreen.classList.add('hidden');
             elements.headerActions.classList.add('hidden');
             elements.joinScreen.classList.remove('hidden');
         });
 
-        // Erase Cookies Modal Controls
+        // Global Erase Cookie Controls
         elements.eraseAllBtn.addEventListener('click', () => {
             elements.wipeModal.classList.remove('hidden');
         });
@@ -941,12 +1106,12 @@
         elements.confirmWipeBtn.addEventListener('click', () => {
             elements.wipeModal.classList.add('hidden');
 
-            // 1. Wipe local cookie store
+            // Erase Local Cookies
             eraseCookie(COOKIE_KEY_PREFIX + state.channel);
             state.messages = [];
             renderMessages();
 
-            // 2. Broadcast Erase Command to all active P2P mesh members
+            // Broadcast wipe signal
             broadcastToMesh({
                 type: 'ERASE_ALL_COOKIES_COMMAND',
                 byUser: state.currentUser
@@ -956,7 +1121,7 @@
             showToast("Channel cookies erased globally", "red");
         });
 
-        // Auto-fill channel from URL param if present
+        // Handle URL room param on load
         window.addEventListener('DOMContentLoaded', () => {
             const params = new URLSearchParams(window.location.search);
             const chanParam = params.get('channel');
@@ -965,7 +1130,6 @@
             }
         });
 
-        // Clean disconnect on page close
         window.addEventListener('beforeunload', () => {
             if (state.peer) state.peer.destroy();
         });
